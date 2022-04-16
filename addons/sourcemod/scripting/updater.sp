@@ -3,9 +3,6 @@
 /* SM Includes */
 #include <sourcemod>
 #undef REQUIRE_EXTENSIONS
-#include <cURL>
-#include <socket>
-#include <steamtools>
 #include <SteamWorks>
 #define REQUIRE_EXTENSIONS
 
@@ -25,12 +22,9 @@ public Plugin:myinfo =
 /* Globals */
 //#define DEBUG		// This will enable verbose logging. Useful for developers testing their updates.
 
-#define CURL_AVAILABLE()		(GetFeatureStatus(FeatureType_Native, "curl_easy_init") == FeatureStatus_Available)
-#define SOCKET_AVAILABLE()		(GetFeatureStatus(FeatureType_Native, "SocketCreate") == FeatureStatus_Available)
-#define STEAMTOOLS_AVAILABLE()	(GetFeatureStatus(FeatureType_Native, "Steam_CreateHTTPRequest") == FeatureStatus_Available)
 #define STEAMWORKS_AVAILABLE()	(GetFeatureStatus(FeatureType_Native, "SteamWorks_WriteHTTPResponseBodyToFile") == FeatureStatus_Available)
 
-#define EXTENSION_ERROR		"This plugin requires one of the cURL, Socket, SteamTools, or SteamWorks extensions to function."
+#define EXTENSION_ERROR		"This plugin requires one of the SteamWorks extension to function."
 #define TEMP_FILE_EXT		"temp"		// All files are downloaded with this extension first.
 #define MAX_URL_LENGTH		256
 
@@ -64,31 +58,6 @@ static String:_sDataPath[PLATFORM_MAX_PATH];
 /* Plugin Functions */
 public APLRes:AskPluginLoad2(Handle:myself, bool:late, String:error[], err_max)
 {
-	// cURL
-	MarkNativeAsOptional("curl_OpenFile");
-	MarkNativeAsOptional("curl_slist");
-	MarkNativeAsOptional("curl_slist_append");
-	MarkNativeAsOptional("curl_easy_init");
-	MarkNativeAsOptional("curl_easy_setopt_int_array");
-	MarkNativeAsOptional("curl_easy_setopt_handle");
-	MarkNativeAsOptional("curl_easy_setopt_string");
-	MarkNativeAsOptional("curl_easy_perform_thread");
-	MarkNativeAsOptional("curl_easy_strerror");
-
-	// Socket
-	MarkNativeAsOptional("SocketCreate");
-	MarkNativeAsOptional("SocketSetArg");
-	MarkNativeAsOptional("SocketSetOption");
-	MarkNativeAsOptional("SocketConnect");
-	MarkNativeAsOptional("SocketSend");
-
-	// SteamTools
-	MarkNativeAsOptional("Steam_CreateHTTPRequest");
-	MarkNativeAsOptional("Steam_SetHTTPRequestHeaderValue");
-	MarkNativeAsOptional("Steam_SendHTTPRequest");
-	MarkNativeAsOptional("Steam_WriteHTTPResponseBody");
-	MarkNativeAsOptional("Steam_ReleaseHTTPRequest");
-
 	API_Init();
 	RegPluginLibrary("updater");
 
@@ -97,7 +66,7 @@ public APLRes:AskPluginLoad2(Handle:myself, bool:late, String:error[], err_max)
 
 public OnPluginStart()
 {
-	if (!CURL_AVAILABLE() && !SOCKET_AVAILABLE() && !STEAMTOOLS_AVAILABLE() && !STEAMWORKS_AVAILABLE())
+	if (!STEAMWORKS_AVAILABLE())
 	{
 		SetFailState(EXTENSION_ERROR);
 	}

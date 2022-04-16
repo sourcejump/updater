@@ -5,10 +5,7 @@ Allows developers to automatically update their plugins and files. Updates will 
 ## Installation:
 
 Your server must be running at least one of the following extensions:
-- [cURL](https://forums.alliedmods.net/showthread.php?t=152216)
-- [Socket](https://forums.alliedmods.net/showthread.php?t=67640)
-- [SteamTools](https://forums.alliedmods.net/forumdisplay.php?f=147)
-- [SteamWorks](https://forums.alliedmods.net/showthread.php?t=229556) (recommended)
+- [SteamWorks](https://forums.alliedmods.net/showthread.php?t=229556)
 
 Extract updater.zip to your SourceMod directory.
 
