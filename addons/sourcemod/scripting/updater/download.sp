@@ -64,11 +64,6 @@ void ProcessDownloadQueue(bool force = false)
 	char dest[PLATFORM_MAX_PATH];
 	hQueuePack.ReadString(dest, sizeof(dest));
 
-	if (!STEAMWORKS_AVAILABLE())
-	{
-		SetFailState(EXTENSION_ERROR);
-	}
-
 #if defined DEBUG
 	Updater_DebugLog("Download started:");
 	Updater_DebugLog("  [0]  URL: %s", url);
@@ -77,16 +72,13 @@ void ProcessDownloadQueue(bool force = false)
 
 	g_bDownloading = true;
 
-	if (STEAMWORKS_AVAILABLE())
+	if (SteamWorks_IsLoaded())
 	{
-		if (SteamWorks_IsLoaded())
-		{
-			Download_SteamWorks(url, dest);
-		}
-		else
-		{
-			CreateTimer(10.0, Timer_RetryQueue);
-		}
+		Download_SteamWorks(url, dest);
+	}
+	else
+	{
+		CreateTimer(10.0, Timer_RetryQueue);
 	}
 }
 
