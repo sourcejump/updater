@@ -1,16 +1,17 @@
-#pragma semicolon 1
-
 /* SM Includes */
 #include <sourcemod>
 #undef REQUIRE_EXTENSIONS
 #include <SteamWorks>
 #define REQUIRE_EXTENSIONS
 
-/* Plugin Info */
-#define PLUGIN_NAME 		"Updater"
-#define PLUGIN_VERSION 		"1.2.2"
+#pragma newdecls required
+#pragma semicolon 1
 
-public Plugin:myinfo =
+/* Plugin Info */
+#define PLUGIN_NAME "Updater"
+#define PLUGIN_VERSION "1.2.2"
+
+public Plugin myinfo =
 {
 	name = PLUGIN_NAME,
 	author = "GoD-Tony",
@@ -20,34 +21,35 @@ public Plugin:myinfo =
 };
 
 /* Globals */
-//#define DEBUG		// This will enable verbose logging. Useful for developers testing their updates.
+//#define DEBUG // This will enable verbose logging. Useful for developers testing their updates.
 
-#define STEAMWORKS_AVAILABLE()	(GetFeatureStatus(FeatureType_Native, "SteamWorks_WriteHTTPResponseBodyToFile") == FeatureStatus_Available)
+#define STEAMWORKS_AVAILABLE() (GetFeatureStatus(FeatureType_Native, "SteamWorks_WriteHTTPResponseBodyToFile") == FeatureStatus_Available)
 
-#define EXTENSION_ERROR		"This plugin requires one of the SteamWorks extension to function."
-#define TEMP_FILE_EXT		"temp"		// All files are downloaded with this extension first.
-#define MAX_URL_LENGTH		256
+#define EXTENSION_ERROR "This plugin requires one of the SteamWorks extension to function."
+#define TEMP_FILE_EXT "temp" // All files are downloaded with this extension first.
+#define MAX_URL_LENGTH 256
 
-#define UPDATE_URL			"http://godtony.mooo.com/updater/updater.txt"
+#define UPDATE_URL "http://godtony.mooo.com/updater/updater.txt"
 
 enum UpdateStatus {
 	Status_Idle,
-	Status_Checking,		// Checking for updates.
-	Status_Downloading,		// Downloading an update.
-	Status_Updated,			// Update is complete.
-	Status_Error,			// An error occured while downloading.
+	Status_Checking,    // Checking for updates.
+	Status_Downloading, // Downloading an update.
+	Status_Updated,     // Update is complete.
+	Status_Error,       // An error occured while downloading.
 };
 
-new bool:g_bGetDownload, bool:g_bGetSource;
+bool g_bGetDownload;
+bool g_bGetSource;
 
-new Handle:g_hPluginPacks = INVALID_HANDLE;
-new Handle:g_hDownloadQueue = INVALID_HANDLE;
-new Handle:g_hRemoveQueue = INVALID_HANDLE;
-new bool:g_bDownloading = false;
+ArrayList g_hPluginPacks;
+ArrayList g_hDownloadQueue;
+ArrayList g_hRemoveQueue;
+bool g_bDownloading;
 
-static Handle:_hUpdateTimer = INVALID_HANDLE;
-static Float:_fLastUpdate = 0.0;
-static String:_sDataPath[PLATFORM_MAX_PATH];
+static Handle _hUpdateTimer;
+static float _fLastUpdate = 0.0;
+static char _sDataPath[PLATFORM_MAX_PATH];
 
 /* Core Includes */
 #include "updater/plugins.sp"
@@ -56,7 +58,7 @@ static String:_sDataPath[PLATFORM_MAX_PATH];
 #include "updater/api.sp"
 
 /* Plugin Functions */
-public APLRes:AskPluginLoad2(Handle:myself, bool:late, String:error[], err_max)
+public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max)
 {
 	API_Init();
 	RegPluginLibrary("updater");
@@ -64,7 +66,7 @@ public APLRes:AskPluginLoad2(Handle:myself, bool:late, String:error[], err_max)
 	return APLRes_Success;
 }
 
-public OnPluginStart()
+public void OnPluginStart()
 {
 	if (!STEAMWORKS_AVAILABLE())
 	{
@@ -74,24 +76,22 @@ public OnPluginStart()
 	LoadTranslations("common.phrases");
 
 	// Convars.
-	new Handle:hCvar = INVALID_HANDLE;
+	ConVar hCvar;
 
-	hCvar = CreateConVar("sm_updater_version", PLUGIN_VERSION, PLUGIN_NAME, FCVAR_PLUGIN|FCVAR_NOTIFY|FCVAR_DONTRECORD);
-	OnVersionChanged(hCvar, "", "");
-	HookConVarChange(hCvar, OnVersionChanged);
+	hCvar = CreateConVar("sm_updater_version", PLUGIN_VERSION, "Updater version", FCVAR_NOTIFY | FCVAR_DONTRECORD);
+	hCvar.AddChangeHook(OnVersionChanged);
 
-	hCvar = CreateConVar("sm_updater", "2", "Determines update functionality. (1 = Notify, 2 = Download, 3 = Include source code)", FCVAR_PLUGIN, true, 1.0, true, 3.0);
-	OnSettingsChanged(hCvar, "", "");
-	HookConVarChange(hCvar, OnSettingsChanged);
+	hCvar = CreateConVar("sm_updater", "2", "Determines update functionality. (1 = Notify, 2 = Download, 3 = Include source code)", _, true, 1.0, true, 3.0);
+	hCvar.AddChangeHook(OnSettingsChanged);
 
 	// Commands.
 	RegAdminCmd("sm_updater_check", Command_Check, ADMFLAG_RCON, "Forces Updater to check for updates.");
 	RegAdminCmd("sm_updater_status", Command_Status, ADMFLAG_RCON, "View the status of Updater.");
 
 	// Initialize arrays.
-	g_hPluginPacks = CreateArray();
-	g_hDownloadQueue = CreateArray();
-	g_hRemoveQueue = CreateArray();
+	g_hPluginPacks = new ArrayList();
+	g_hDownloadQueue = new ArrayList();
+	g_hRemoveQueue = new ArrayList();
 
 	// Temp path for checking update files.
 	BuildPath(Path_SM, _sDataPath, sizeof(_sDataPath), "data/updater.txt");
@@ -105,19 +105,18 @@ public OnPluginStart()
 	_hUpdateTimer = CreateTimer(86400.0, Timer_CheckUpdates, _, TIMER_REPEAT);
 }
 
-public OnAllPluginsLoaded()
+public void OnAllPluginsLoaded()
 {
 	// Check for updates on startup.
 	TriggerTimer(_hUpdateTimer, true);
 }
 
-public Action:Timer_CheckUpdates(Handle:timer)
+public Action Timer_CheckUpdates(Handle timer)
 {
 	Updater_FreeMemory();
 
 	// Update everything!
-	new maxPlugins = GetMaxPlugins();
-	for (new i = 0; i < maxPlugins; i++)
+	for (int i = 0; i < GetMaxPlugins(); i++)
 	{
 		if (Updater_GetStatus(i) == Status_Idle)
 		{
@@ -130,9 +129,9 @@ public Action:Timer_CheckUpdates(Handle:timer)
 	return Plugin_Continue;
 }
 
-public Action:Command_Check(client, args)
+public Action Command_Check(int client, int args)
 {
-	new Float:fNextUpdate = _fLastUpdate + 3600.0;
+	float fNextUpdate = _fLastUpdate + 3600.0;
 
 	if (fNextUpdate > GetTickedTime())
 	{
@@ -147,16 +146,15 @@ public Action:Command_Check(client, args)
 	return Plugin_Handled;
 }
 
-public Action:Command_Status(client, args)
+public Action Command_Status(int client, int args)
 {
-	decl String:sFilename[64];
-	new Handle:hPlugin = INVALID_HANDLE;
-	new maxPlugins = GetMaxPlugins();
+	char sFilename[64];
+	Handle hPlugin;
 
 	ReplyToCommand(client, "[Updater] -- Status Begin --");
 	ReplyToCommand(client, "Plugins being monitored for updates:");
 
-	for (new i = 0; i < maxPlugins; i++)
+	for (int i = 0; i < GetMaxPlugins(); i++)
 	{
 		hPlugin = IndexToPlugin(i);
 
@@ -173,17 +171,17 @@ public Action:Command_Status(client, args)
 	return Plugin_Handled;
 }
 
-public OnVersionChanged(Handle:convar, const String:oldValue[], const String:newValue[])
+public void OnVersionChanged(ConVar convar, const char[] oldValue, const char[] newValue)
 {
 	if (!StrEqual(newValue, PLUGIN_VERSION))
 	{
-		SetConVarString(convar, PLUGIN_VERSION);
+		convar.SetString(PLUGIN_VERSION);
 	}
 }
 
-public OnSettingsChanged(Handle:convar, const String:oldValue[], const String:newValue[])
+public void OnSettingsChanged(ConVar convar, const char[] oldValue, const char[] newValue)
 {
-	switch (GetConVarInt(convar))
+	switch (convar.IntValue)
 	{
 		case 1: // Notify only.
 		{
@@ -206,40 +204,39 @@ public OnSettingsChanged(Handle:convar, const String:oldValue[], const String:ne
 }
 
 #if !defined DEBUG
-public Updater_OnPluginUpdated()
+public void Updater_OnPluginUpdated()
 {
 	Updater_Log("Reloading Updater plugin... updates will resume automatically.");
 
 	// Reload this plugin.
-	decl String:filename[64];
+	char filename[64];
 	GetPluginFilename(INVALID_HANDLE, filename, sizeof(filename));
 	ServerCommand("sm plugins reload %s", filename);
 }
 #endif
 
-Updater_Check(index)
+void Updater_Check(int index)
 {
 	if (Fwd_OnPluginChecking(IndexToPlugin(index)) == Plugin_Continue)
 	{
-		decl String:url[MAX_URL_LENGTH];
+		char url[MAX_URL_LENGTH];
 		Updater_GetURL(index, url, sizeof(url));
 		Updater_SetStatus(index, Status_Checking);
 		AddToDownloadQueue(index, url, _sDataPath);
 	}
 }
 
-Updater_FreeMemory()
+void Updater_FreeMemory()
 {
 	// Make sure that no threads are active.
-	if (g_bDownloading || GetArraySize(g_hDownloadQueue))
+	if (g_bDownloading || g_hDownloadQueue.Length)
 	{
 		return;
 	}
 
 	// Remove all queued plugins.
-	new index;
-	new maxPlugins = GetArraySize(g_hRemoveQueue);
-	for (new i = 0; i < maxPlugins; i++)
+	int index;
+	for (int i = 0; i < g_hRemoveQueue.Length; i++)
 	{
 		index = PluginToIndex(GetArrayCell(g_hRemoveQueue, i));
 
@@ -249,10 +246,10 @@ Updater_FreeMemory()
 		}
 	}
 
-	ClearArray(g_hRemoveQueue);
+	g_hRemoveQueue.Clear();
 
 	// Remove plugins that have been unloaded.
-	for (new i = 0; i < GetMaxPlugins(); i++)
+	for (int i = 0; i < GetMaxPlugins(); i++)
 	{
 		if (!IsValidPlugin(IndexToPlugin(i)))
 		{
@@ -262,20 +259,26 @@ Updater_FreeMemory()
 	}
 }
 
-Updater_Log(const String:format[], any:...)
+void Updater_Log(const char[] format, any ...)
 {
-	decl String:buffer[256], String:path[PLATFORM_MAX_PATH];
+	char buffer[256];
 	VFormat(buffer, sizeof(buffer), format, 2);
-	BuildPath(Path_SM, path, sizeof(path), "logs/Updater.log");
+
+	char path[PLATFORM_MAX_PATH];
+	BuildPath(Path_SM, path, sizeof(path), "logs/updater.log");
+
 	LogToFileEx(path, "%s", buffer);
 }
 
 #if defined DEBUG
-Updater_DebugLog(const String:format[], any:...)
+void Updater_DebugLog(const char[] format, any...)
 {
-	decl String:buffer[256], String:path[PLATFORM_MAX_PATH];
+	char buffer[256],
 	VFormat(buffer, sizeof(buffer), format, 2);
-	BuildPath(Path_SM, path, sizeof(path), "logs/Updater_Debug.log");
+
+	char path[PLATFORM_MAX_PATH];
+	BuildPath(Path_SM, path, sizeof(path), "logs/updater_debug.log");
+
 	LogToFileEx(path, "%s", buffer);
 }
 #endif

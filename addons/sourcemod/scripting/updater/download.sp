@@ -1,20 +1,19 @@
-
 /* Download Manager */
 
-#include "updater/download_steamworks.sp"
+#include "download_steamworks.sp"
 
-static QueuePack_URL = 0;
+static DataPackPos QueuePack_URL;
 
-FinalizeDownload(index)
+void FinalizeDownload(int index)
 {
 	/* Strip the temporary file extension from downloaded files. */
-	decl String:newpath[PLATFORM_MAX_PATH], String:oldpath[PLATFORM_MAX_PATH];
-	new Handle:hFiles = Updater_GetFiles(index);
+	char newpath[PLATFORM_MAX_PATH];
+	char oldpath[PLATFORM_MAX_PATH];
+	ArrayList hFiles = Updater_GetFiles(index);
 
-	new maxFiles = GetArraySize(hFiles);
-	for (new i = 0; i < maxFiles; i++)
+	for (int i = 0; i < hFiles.Length; i++)
 	{
-		GetArrayString(hFiles, i, newpath, sizeof(newpath));
+		hFiles.GetString(i, newpath, sizeof(newpath));
 		Format(oldpath, sizeof(oldpath), "%s.%s", newpath, TEMP_FILE_EXT);
 
 		// Rename doesn't overwrite on Windows. Make sure the path is clear.
@@ -26,19 +25,18 @@ FinalizeDownload(index)
 		RenameFile(newpath, oldpath);
 	}
 
-	ClearArray(hFiles);
+	hFiles.Clear();
 }
 
-AbortDownload(index)
+void AbortDownload(int index)
 {
 	/* Delete all downloaded temporary files. */
-	decl String:path[PLATFORM_MAX_PATH];
-	new Handle:hFiles = Updater_GetFiles(index);
+	char path[PLATFORM_MAX_PATH];
+	ArrayList hFiles = Updater_GetFiles(index);
 
-	new maxFiles = GetArraySize(hFiles);
-	for (new i = 0; i < maxFiles; i++)
+	for (int i = 0; i < hFiles.Length; i++)
 	{
-		GetArrayString(hFiles, 0, path, sizeof(path));
+		hFiles.GetString(i, path, sizeof(path));
 		Format(path, sizeof(path), "%s.%s", path, TEMP_FILE_EXT);
 
 		if (FileExists(path))
@@ -47,22 +45,24 @@ AbortDownload(index)
 		}
 	}
 
-	ClearArray(hFiles);
+	hFiles.Clear();
 }
 
-ProcessDownloadQueue(bool:force=false)
+void ProcessDownloadQueue(bool force = false)
 {
-	if (!force && (g_bDownloading || !GetArraySize(g_hDownloadQueue)))
+	if (!force && (g_bDownloading || !g_hDownloadQueue.Length))
 	{
 		return;
 	}
 
-	new Handle:hQueuePack = GetArrayCell(g_hDownloadQueue, 0);
-	SetPackPosition(hQueuePack, QueuePack_URL);
+	DataPack hQueuePack = g_hDownloadQueue.Get(0);
+	hQueuePack.Position = QueuePack_URL;
 
-	decl String:url[MAX_URL_LENGTH], String:dest[PLATFORM_MAX_PATH];
-	ReadPackString(hQueuePack, url, sizeof(url));
-	ReadPackString(hQueuePack, dest, sizeof(dest));
+	char url[MAX_URL_LENGTH];
+	hQueuePack.ReadString(url, sizeof(url));
+
+	char dest[PLATFORM_MAX_PATH];
+	hQueuePack.ReadString(dest, sizeof(dest));
 
 	if (!STEAMWORKS_AVAILABLE())
 	{
@@ -90,40 +90,42 @@ ProcessDownloadQueue(bool:force=false)
 	}
 }
 
-public Action:Timer_RetryQueue(Handle:timer)
+public Action Timer_RetryQueue(Handle timer)
 {
 	ProcessDownloadQueue(true);
-
 	return Plugin_Stop;
 }
 
-AddToDownloadQueue(index, const String:url[], const String:dest[])
+void AddToDownloadQueue(int index, const char[] url, const char[] dest)
 {
-	new Handle:hQueuePack = CreateDataPack();
-	WritePackCell(hQueuePack, index);
+	DataPack hQueuePack = new DataPack();
+	hQueuePack.WriteCell(index);
 
-	QueuePack_URL = GetPackPosition(hQueuePack);
-	WritePackString(hQueuePack, url);
-	WritePackString(hQueuePack, dest);
+	QueuePack_URL = hQueuePack.Position;
+	hQueuePack.WriteString(url);
+	hQueuePack.WriteString(dest);
 
-	PushArrayCell(g_hDownloadQueue, hQueuePack);
+	g_hDownloadQueue.Push(hQueuePack);
 
 	ProcessDownloadQueue();
 }
 
-DownloadEnded(bool:successful, const String:error[]="")
+void DownloadEnded(bool successful, const char[] error = "")
 {
-	new Handle:hQueuePack = GetArrayCell(g_hDownloadQueue, 0);
-	ResetPack(hQueuePack);
+	DataPack hQueuePack = g_hDownloadQueue.Get(0);
+	hQueuePack.Reset();
 
-	decl String:url[MAX_URL_LENGTH], String:dest[PLATFORM_MAX_PATH];
-	new index = ReadPackCell(hQueuePack);
-	ReadPackString(hQueuePack, url, sizeof(url));
-	ReadPackString(hQueuePack, dest, sizeof(dest));
+	int index = hQueuePack.ReadCell();
+
+	char url[MAX_URL_LENGTH];
+	hQueuePack.ReadString(url, sizeof(url));
+
+	char dest[PLATFORM_MAX_PATH];
+	hQueuePack.ReadString(dest, sizeof(dest));
 
 	// Remove from the queue.
-	CloseHandle(hQueuePack);
-	RemoveFromArray(g_hDownloadQueue, 0);
+	delete hQueuePack;
+	g_hDownloadQueue.Erase(0);
 
 #if defined DEBUG
 	Updater_DebugLog("  [2]  Successful: %s", successful ? "Yes" : "No");
@@ -151,20 +153,20 @@ DownloadEnded(bool:successful, const String:error[]="")
 			if (successful)
 			{
 				// Check if this was the last file we needed.
-				decl String:lastfile[PLATFORM_MAX_PATH];
-				new Handle:hFiles = Updater_GetFiles(index);
+				char lastfile[PLATFORM_MAX_PATH];
+				ArrayList hFiles = Updater_GetFiles(index);
 
-				GetArrayString(hFiles, GetArraySize(hFiles) - 1, lastfile, sizeof(lastfile));
+				hFiles.GetString(hFiles.Length - 1, lastfile, sizeof(lastfile));
 				Format(lastfile, sizeof(lastfile), "%s.%s", lastfile, TEMP_FILE_EXT);
 
 				if (StrEqual(dest, lastfile))
 				{
-					new Handle:hPlugin = IndexToPlugin(index);
+					Handle hPlugin = IndexToPlugin(index);
 
 					Fwd_OnPluginUpdating(hPlugin);
 					FinalizeDownload(index);
 
-					decl String:sName[64];
+					char sName[64];
 					if (!GetPluginInfo(hPlugin, PlInfo_Name, sName, sizeof(sName)))
 					{
 						strcopy(sName, sizeof(sName), "Null");
@@ -182,7 +184,7 @@ DownloadEnded(bool:successful, const String:error[]="")
 				AbortDownload(index);
 				Updater_SetStatus(index, Status_Error);
 
-				decl String:filename[64];
+				char filename[64];
 				GetPluginFilename(IndexToPlugin(index), filename, sizeof(filename));
 				Updater_Log("Error downloading update for plugin: %s", filename);
 				Updater_Log("  [0]  URL: %s", url);
@@ -206,5 +208,6 @@ DownloadEnded(bool:successful, const String:error[]="")
 	}
 
 	g_bDownloading = false;
+
 	ProcessDownloadQueue();
 }
